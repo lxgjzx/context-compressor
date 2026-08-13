@@ -2,6 +2,8 @@
 
 A framework-agnostic skill for compressing agent conversation context, transcripts, and session notes — saving tokens and preventing context-window overflow in long-running sessions.
 
+> 中文文档: [README.zh-CN.md](README.zh-CN.md)
+
 Works with **Claude Code, Codex, Cursor, Windsurf, OpenSquilla**, and any agent that can read Markdown and run Python 3 (stdlib only).
 
 ## Why
