@@ -80,7 +80,13 @@ For a 200k window, a sane post-compression split:
 - Verbatim recent turns: ~30–40%
 - Headroom: ~15%
 
-Adjust for smaller windows. The point: history must never silently eat the whole window.
+For smaller windows, shrink **history** first — never the current working state:
+
+| Window | Verbatim recent turns | History summary cap |
+|---|---|---|
+| 200k | last 10–15 turns | ~10–20k tokens |
+| 128k | last 8–12 turns | ~6–10k tokens |
+| 32k | last 5–8 turns | ~2–4k tokens |
 
 ## 6. File-blob compression
 

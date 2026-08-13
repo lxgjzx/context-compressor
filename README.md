@@ -1,5 +1,7 @@
 # Context Compressor
 
+[![CI](https://github.com/lxgjzx/context-compressor/actions/workflows/ci.yml/badge.svg)](https://github.com/lxgjzx/context-compressor/actions/workflows/ci.yml)
+
 A framework-agnostic skill for compressing agent conversation context, transcripts, and session notes — saving tokens and preventing context-window overflow in long-running sessions.
 
 > 中文文档: [README.zh-CN.md](README.zh-CN.md)
@@ -39,6 +41,7 @@ python3 scripts/compress.py report logs/*.md     # before/after table
 # mechanical compression (add --dry-run to preview without writing)
 python3 scripts/compress.py strip transcript.md
 python3 scripts/compress.py dedup transcript.md
+python3 scripts/compress.py truncate transcript.md --keep-tokens 4000   # token-budget mode (preferred)
 python3 scripts/compress.py truncate transcript.md --keep-head 20 --keep-tail 15
 ```
 
@@ -64,7 +67,16 @@ SKILL.md                 # trigger + 5-step workflow + never-lose checklist
 scripts/compress.py      # stdlib-only CLI (count / report / strip / dedup / truncate)
 references/strategies.md # compression strategy library
 references/agents.md     # per-agent install map + compatibility notes
+tests/                   # unit tests (run: python3 -m unittest discover -s tests -v)
 ```
+
+## Testing
+
+```bash
+python3 -m unittest discover -s tests -v
+```
+
+GitHub Actions runs these on Python 3.9 / 3.11 / 3.13 on every push and PR.
 
 ## License
 

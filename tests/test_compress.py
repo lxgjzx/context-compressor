@@ -43,6 +43,20 @@ class TestCount(unittest.TestCase):
         self.assertEqual(data[0]["path"], "stdin")
         self.assertGreater(data[0]["tokens_est"], 0)
 
+    def test_count_glob_expansion(self):
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / "a.md").write_text("hello\n", encoding="utf-8")
+            (Path(d) / "b.md").write_text("world\n", encoding="utf-8")
+            r = run("count", str(Path(d) / "*.md"), "--json")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = json.loads(r.stdout)
+            self.assertEqual(len(data), 2)
+
+    def test_count_missing_file_reports_error(self):
+        r = run("count", "/nonexistent/path/xyz.md")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("error:", r.stderr)
+
 
 class TestDedup(unittest.TestCase):
     def test_dedup_removes_duplicates(self):
@@ -77,6 +91,19 @@ class TestStrip(unittest.TestCase):
             content = out.read_text(encoding="utf-8")
             self.assertFalse(content.startswith("\ufeff"))
 
+    def test_strip_keeps_long_english_paragraph(self):
+        # Regression: a long English paragraph's letters are all base64 chars,
+        # but it must NOT be mistaken for a base64 blob and deleted.
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "t.md"
+            long_english = "word " * 40  # ~200 chars
+            p.write_text(long_english.strip() + "\nkeep\n", encoding="utf-8")
+            out = Path(d) / "o.md"
+            r = run("strip", str(p), "--out", str(out))
+            self.assertEqual(r.returncode, 0, r.stderr)
+            content = out.read_text(encoding="utf-8")
+            self.assertIn("word", content)
+
 
 class TestTruncate(unittest.TestCase):
     def test_truncate_keeps_head_and_tail(self):
@@ -97,6 +124,18 @@ class TestTruncate(unittest.TestCase):
             p.write_text("", encoding="utf-8")
             r = run("truncate", str(p), "--dry-run")
             self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_truncate_keep_tokens(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "t.md"
+            p.write_text("".join(f"line number {i} with some words\n" for i in range(50)), encoding="utf-8")
+            out = Path(d) / "o.md"
+            r = run("truncate", str(p), "--keep-tokens", "100", "--out", str(out))
+            self.assertEqual(r.returncode, 0, r.stderr)
+            content = out.read_text(encoding="utf-8")
+            self.assertIn("compressed", content)
+            self.assertIn("line number 0", content)    # head kept
+            self.assertIn("line number 49", content)   # tail kept
 
 
 class TestReport(unittest.TestCase):

@@ -1,5 +1,7 @@
 # Context Compressor 上下文压缩
 
+[![CI](https://github.com/lxgjzx/context-compressor/actions/workflows/ci.yml/badge.svg)](https://github.com/lxgjzx/context-compressor/actions/workflows/ci.yml)
+
 一个**与 agent 框架无关**的上下文压缩 skill,用于压缩 agent 的对话上下文、会话记录和工作笔记,在长会话中节省 token、避免上下文窗口溢出。
 
 适用于 **Claude Code、Codex、Cursor、Windsurf、OpenSquilla**,以及任何能读 Markdown、能跑 Python 3(纯标准库)的 agent。
@@ -39,6 +41,7 @@ python3 scripts/compress.py report logs/*.md     # 前后对比表
 # 机械压缩(加 --dry-run 可预览而不写入)
 python3 scripts/compress.py strip transcript.md
 python3 scripts/compress.py dedup transcript.md
+python3 scripts/compress.py truncate transcript.md --keep-tokens 4000   # token 预算模式(推荐)
 python3 scripts/compress.py truncate transcript.md --keep-head 20 --keep-tail 15
 ```
 

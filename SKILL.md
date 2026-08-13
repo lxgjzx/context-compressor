@@ -44,6 +44,7 @@ Do NOT compress mid-flow inside the user's active working block (e.g., while deb
    ```bash
    python3 scripts/compress.py count transcript.md            # token estimate
    python3 scripts/compress.py report logs/*.md               # before/after table
+   python3 scripts/compress.py truncate transcript.md --keep-tokens 4000 --dry-run   # token-budget mode (preferred)
    python3 scripts/compress.py truncate transcript.md --keep-head 20 --keep-tail 15 --dry-run
    python3 scripts/compress.py dedup notes.md
    python3 scripts/compress.py strip raw.md --dry-run

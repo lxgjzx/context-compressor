@@ -20,6 +20,7 @@ print the result without writing.
 """
 
 import argparse
+import glob as _glob
 import json
 import re
 import sys
@@ -44,13 +45,22 @@ NOISE_RE = [
 ]
 
 
+_ENC = None
+_ENC_FAILED = False
+
+
 def _tiktoken_count(text: str) -> int:
-    try:
-        import tiktoken
-        enc = tiktoken.get_encoding("cl100k_base")
-        return len(enc.encode(text))
-    except Exception:
+    global _ENC, _ENC_FAILED
+    if _ENC_FAILED:
         return -1
+    if _ENC is None:
+        try:
+            import tiktoken
+            _ENC = tiktoken.get_encoding("cl100k_base")
+        except Exception:
+            _ENC_FAILED = True
+            return -1
+    return len(_ENC.encode(text))
 
 
 def estimate_tokens(text: str) -> float:
@@ -69,6 +79,17 @@ def read_lines(path: str):
         return f.readlines()
 
 
+def expand_paths(paths):
+    """Expand shell glob patterns (Windows shells don't do it for us)."""
+    out = []
+    for p in paths:
+        if any(ch in p for ch in "*?["):
+            out.extend(sorted(_glob.glob(p)) or [p])
+        else:
+            out.append(p)
+    return out
+
+
 def write_lines(path: str, lines) -> None:
     with open(path, "w", encoding="utf-8", newline="\n") as f:
         f.writelines(lines)
@@ -78,11 +99,13 @@ def is_base64_line(line: str) -> bool:
     s = line.strip()
     if len(s) < 120:
         return False
-    letters = [c for c in s if not c.isspace()]
-    if not letters:
+    # Real base64 has no inline whitespace; ordinary prose/English text does.
+    # Without this guard, a long plain-text paragraph (whose letters and
+    # digits all happen to be base64 characters) would be wrongly deleted.
+    if any(c.isspace() for c in s):
         return False
-    hits = sum(1 for c in letters if c in BASE64_CHARS)
-    return hits / len(letters) >= 0.85
+    hits = sum(1 for c in s if c in BASE64_CHARS)
+    return hits / len(s) >= 0.85
 
 
 def cmd_count(args) -> None:
@@ -94,7 +117,7 @@ def cmd_count(args) -> None:
             print(f"stdin\t{estimate_tokens(text):.0f}")
         return
     results = []
-    for path in args.files:
+    for path in expand_paths(args.files):
         with open(path, "r", encoding="utf-8-sig", errors="replace") as f:
             text = f.read()
         results.append((path, estimate_tokens(text)))
@@ -105,18 +128,42 @@ def cmd_count(args) -> None:
             print(f"{p}\t{t:.0f}")
 
 
+def _accumulate(lines, budget):
+    """Accumulate lines from the start until `budget` tokens is reached."""
+    out = []
+    acc = 0.0
+    for ln in lines:
+        t = estimate_tokens(ln)
+        if out and acc + t > budget:
+            break
+        acc += t
+        out.append(ln)
+    return out
+
+
 def cmd_truncate(args) -> None:
     lines = read_lines(args.file)
-    head, tail = max(0, args.keep_head), max(0, args.keep_tail)
     before_tokens = estimate_tokens("".join(lines))
-    if head + tail >= len(lines):
+    if args.keep_tokens is not None:
+        # Token-budget mode: keep the recent tail within ~75% of the budget
+        # and the head (title/meta) within ~25%, so "what just happened"
+        # survives with the most fidelity.
+        budget = max(0, args.keep_tokens)
+        head_budget = budget * 0.25
+        tail_budget = budget - head_budget
+        head = _accumulate(lines, head_budget)
+        tail = list(reversed(_accumulate(reversed(lines), tail_budget)))
+    else:
+        head_n, tail_n = max(0, args.keep_head), max(0, args.keep_tail)
+        head = lines[:head_n]
+        tail = lines[len(lines) - tail_n :]
+    if len(head) + len(tail) >= len(lines):
         out = lines
     else:
-        removed = lines[head : len(lines) - tail]
-        dropped = len(removed)
+        removed = lines[len(head) : len(lines) - len(tail)]
         dropped_tokens = estimate_tokens("".join(removed))
-        marker = f"... [compressed: dropped {dropped} lines, ~{dropped_tokens:.0f} tokens] ...\n"
-        out = lines[:head] + [marker] + lines[len(lines) - tail :]
+        marker = f"... [compressed: dropped {len(removed)} lines, ~{dropped_tokens:.0f} tokens] ...\n"
+        out = head + [marker] + tail
     after_tokens = estimate_tokens("".join(out))
     if args.dry_run:
         sys.stdout.write("".join(out))
@@ -205,7 +252,7 @@ def cmd_strip(args) -> None:
 
 def cmd_report(args) -> None:
     rows = []
-    for path in args.files:
+    for path in expand_paths(args.files):
         lines = read_lines(path)
         orig = estimate_tokens("".join(lines))
         prev_blank = False
@@ -252,6 +299,8 @@ def main() -> None:
     p_trunc.add_argument("file")
     p_trunc.add_argument("--keep-head", type=int, default=20)
     p_trunc.add_argument("--keep-tail", type=int, default=15)
+    p_trunc.add_argument("--keep-tokens", type=int, default=None,
+                         help="token budget: keep tail within ~75% and head within ~25% of this many tokens")
     p_trunc.add_argument("-o", "--out")
     p_trunc.add_argument("--dry-run", action="store_true")
     p_trunc.set_defaults(func=cmd_truncate)
@@ -277,7 +326,11 @@ def main() -> None:
     p_report.set_defaults(func=cmd_report)
 
     args = parser.parse_args()
-    args.func(args)
+    try:
+        args.func(args)
+    except (FileNotFoundError, OSError) as e:
+        print(f"error: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
